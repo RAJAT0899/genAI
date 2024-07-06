@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatbot</title>
+</head>
+<body>
+<div class="container">
+    <div class="chatbox">
+        <div class="chatbox__support">
+            <div class="chatbox__header">
+                <div class="chatbox__image--header">
+                    <img src="{{ url_for('static', filename='images/chat-bot.png') }}" alt="robot" width="24" height="24">
+                </div>
+                <div class="chatbox__content--header">
+                    <h5 class="chatbox__heading--header">Segwik Support</h5>
+                </div>
+            </div>
+            <div class="chatbox__messages">
+                <div class="messages__item messages__item--operator">
+                    Say Hi👋 and I will guide you
+                </div>
+            </div>
+            <div class="chatbox__footer">
+                <input type="text" placeholder="Write a message...">
+                <button class="chatbox__send--footer send__button">
+                    <img src="{{ url_for('static', filename='images/right-arrow.png') }}" alt="send" width="20" height="20">
+                </button>
+            </div>
+        </div>
+        <div class="chatbox__button">
+            <button><img src="{{ url_for('static', filename='images/speech-bubble.png') }}" alt="chatbox icon" /></button>
+        </div>
+    </div>
+</div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+</body>
+</html>
