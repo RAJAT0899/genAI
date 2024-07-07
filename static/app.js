@@ -9,6 +9,9 @@ class Chatbox {
         this.state = false;
         this.messages = [];
         this.websiteText = '';
+
+        // Determine the base URL dynamically
+        this.baseUrl = window.location.hostname === 'localhost' ? 'http://127.0.0.1:5000' : window.location.origin;
     }
 
     display() {
@@ -36,7 +39,7 @@ class Chatbox {
     }
 
     fetchWebsiteText() {
-        fetch('http://127.0.0.1:5000/scrape_website')
+        fetch(`${this.baseUrl}/scrape_website`)
             .then(response => response.json())
             .then(data => {
                 this.websiteText = data.website_text;
@@ -114,68 +117,58 @@ class Chatbox {
         const textField = chatbox.querySelector('input');
         const sendButton = chatbox.querySelector('.send__button');
         const userMessage = textField.value.trim();
-        
         if (userMessage === "") {
             return;
         }
-    
-        // Disable input and send button
-        textField.disabled = true;
-        sendButton.disabled = true;
-    
         const userMsgObject = { name: "User", message: userMessage };
         this.messages.push(userMsgObject);
         await this.appendMessage(chatbox, userMsgObject); // Update UI with user message immediately
-    
+
         // Display loading dots
         const loadingDotsElement = await this.appendMessage(chatbox, { name: "Bot" }, true);
-    
-        fetch('http://127.0.0.1:5000/predict', {
+
+        fetch(`${this.baseUrl}/predict`, {
             method: 'POST',
             body: JSON.stringify({ message: userMessage, website_text: this.websiteText }),
             headers: {
                 'Content-Type': 'application/json'
             },
         })
-        .then(response => response.json())
-        .then(async data => {
-            let botMessage = data.answer;
-            const followUpQuestions = data.follow_up_questions;
-            loadingDotsElement.innerHTML = ''; // Clear the loading dots
-    
-            // Clean up the bot message if it starts with **
-            botMessage = this.cleanBotMessage(botMessage);
-    
-            // Stream the bot response
-            await this.typeMessage(loadingDotsElement, botMessage);
-    
-            // Display follow-up questions
-            for (const question of followUpQuestions) {
-                const followUpMsgObject = { name: "Bot", message: question };
-                this.messages.push(followUpMsgObject);
-                await this.appendMessage(chatbox, followUpMsgObject);
-            }
-    
-            // Check if the response contains a comparison table
-            if (botMessage.includes('comparison between')) {
-                // Handle the comparison table display
-                this.displayComparisonTable(botMessage);
-            }
-    
-            // Clear input field after sending message
-            textField.value = '';
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            textField.value = '';
-            loadingDotsElement.innerHTML = ''; // Clear the loading dots in case of error
-        })
-        .finally(() => {
-            // Enable input and send button after response
-            textField.disabled = false;
-            sendButton.disabled = false;
-        });
+            .then(response => response.json())
+            .then(async data => {
+                let botMessage = data.answer;
+                const followUpQuestions = data.follow_up_questions;
+                loadingDotsElement.innerHTML = ''; // Clear the loading dots
+
+                // Clean up the bot message if it starts with **
+                botMessage = this.cleanBotMessage(botMessage);
+
+                // Stream the bot response
+                await this.typeMessage(loadingDotsElement, botMessage);
+
+                // Display follow-up questions
+                for (const question of followUpQuestions) {
+                    const followUpMsgObject = { name: "Bot", message: question };
+                    this.messages.push(followUpMsgObject);
+                    await this.appendMessage(chatbox, followUpMsgObject);
+                }
+
+                // Check if the response contains a comparison table
+                if (botMessage.includes('comparison between')) {
+                    // Handle the comparison table display
+                    this.displayComparisonTable(botMessage);
+                }
+
+                // Clear input field after sending message
+                textField.value = '';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                textField.value = '';
+                loadingDotsElement.innerHTML = ''; // Clear the loading dots in case of error
+            });
     }
+
     cleanBotMessage(message) {
         // Remove all occurrences of ** around text
         return message.replace(/\*\*(.*?)\*\*/g, '$1').trim();
