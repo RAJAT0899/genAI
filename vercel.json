@@ -1,0 +1,22 @@
+{
+    "version": 2,
+    "builds": [
+      { "src": "static/**", "use": "@vercel/static-build" },
+      { "use": "@vercel/python" }
+    ],
+    "routes": [
+      {
+        "src": "/scrape_website",
+        "dest": "/api/scrape_website"
+      },
+      {
+        "src": "/predict",
+        "dest": "/api/predict"
+      },
+      {
+        "src": "/(.*)",
+        "dest": "/"
+      }
+    ]
+  }
+  
