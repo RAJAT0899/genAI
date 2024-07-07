@@ -44,8 +44,7 @@ body {
 .chatbox__support {
     display: flex;
     flex-direction: column;
-    /* background: var(--chatBoxBackground); */
-    background: #FFFFFF;
+    background: var(--chatBoxBackground);
     width: 350px;
     height: 700px;
     opacity: 0;

@@ -120,6 +120,9 @@ class Chatbox {
         if (userMessage === "") {
             return;
         }
+        // Disable input and send button
+        textField.disabled = true;
+        sendButton.disabled = true;
         const userMsgObject = { name: "User", message: userMessage };
         this.messages.push(userMsgObject);
         await this.appendMessage(chatbox, userMsgObject); // Update UI with user message immediately
@@ -134,39 +137,44 @@ class Chatbox {
                 'Content-Type': 'application/json'
             },
         })
-            .then(response => response.json())
-            .then(async data => {
-                let botMessage = data.answer;
-                const followUpQuestions = data.follow_up_questions;
-                loadingDotsElement.innerHTML = ''; // Clear the loading dots
+        .then(response => response.json())
+        .then(async data => {
+            let botMessage = data.answer;
+            const followUpQuestions = data.follow_up_questions;
+            loadingDotsElement.innerHTML = ''; // Clear the loading dots
 
-                // Clean up the bot message if it starts with **
-                botMessage = this.cleanBotMessage(botMessage);
+            // Clean up the bot message if it starts with **
+            botMessage = this.cleanBotMessage(botMessage);
 
-                // Stream the bot response
-                await this.typeMessage(loadingDotsElement, botMessage);
+            // Stream the bot response
+            await this.typeMessage(loadingDotsElement, botMessage);
 
-                // Display follow-up questions
-                for (const question of followUpQuestions) {
-                    const followUpMsgObject = { name: "Bot", message: question };
-                    this.messages.push(followUpMsgObject);
-                    await this.appendMessage(chatbox, followUpMsgObject);
-                }
+            // Display follow-up questions
+            for (const question of followUpQuestions) {
+                const followUpMsgObject = { name: "Bot", message: question };
+                this.messages.push(followUpMsgObject);
+                await this.appendMessage(chatbox, followUpMsgObject);
+            }
 
-                // Check if the response contains a comparison table
-                if (botMessage.includes('comparison between')) {
-                    // Handle the comparison table display
-                    this.displayComparisonTable(botMessage);
-                }
+            // Check if the response contains a comparison table
+            if (botMessage.includes('comparison between')) {
+                // Handle the comparison table display
+                this.displayComparisonTable(botMessage);
+            }
 
-                // Clear input field after sending message
-                textField.value = '';
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                textField.value = '';
-                loadingDotsElement.innerHTML = ''; // Clear the loading dots in case of error
-            });
+            // Clear input field after sending message
+            textField.value = '';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            textField.value = '';
+            loadingDotsElement.innerHTML = ''; // Clear the loading dots in case of error
+        })
+        .finally(() => {
+            // Enable input and send button after response
+            textField.disabled = false;
+            sendButton.disabled = false;
+        });
     }
 
     cleanBotMessage(message) {
