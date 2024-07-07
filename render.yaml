@@ -1,0 +1,8 @@
+services:
+  - name: web
+    env:
+      - key: GOOGLE_API_KEY
+        from_secret: true
+    build_command: pip install -r requirements.txt
+    start_command: python bot.py
+    port: 5000
