@@ -2,20 +2,21 @@
     "version": 2,
     "builds": [
       { "src": "static/**", "use": "@vercel/static-build" },
-      { "use": "@vercel/python" }
+      { "src": "/api/scrape_website", "use": "@vercel/node" },
+      { "src": "/api/predict", "use": "@vercel/node" }
     ],
     "routes": [
       {
-        "src": "/scrape_website",
+        "src": "/api/scrape_website",
         "dest": "/api/scrape_website"
       },
       {
-        "src": "/predict",
+        "src": "/api/predict",
         "dest": "/api/predict"
       },
       {
         "src": "/(.*)",
-        "dest": "/"
+        "dest": "/index.html"
       }
     ]
   }
