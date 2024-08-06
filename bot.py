@@ -1,14 +1,14 @@
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
-from tqdm import tqdm
 from flask import Flask, render_template, request, jsonify
 import logging
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-from concurrent.futures import ThreadPoolExecutor
-from database import init_db, save_website_text, get_website_text
+from database import init_db, save_page_text, get_page_text
+import time
+import urllib.robotparser as robotparser
 
 # Load environment variables from .env file
 load_dotenv()
@@ -49,53 +49,106 @@ safety_settings = [
 ]
 
 # Define the predefined website URL
-WEBSITE_URL = "https://pratiyogitanirdeshika.com/"
+WEBSITE_URL = "https://flair-solution.com/"
+CRAWL_DELAY = 1  # 1 second delay between requests
+MAX_DEPTH = 5  # Maximum depth for crawling
 
-# Function to extract text from a URL
-def extract_text_from_url(url):
+# Initialize robots.txt parser
+rp = robotparser.RobotFileParser()
+rp.set_url(urljoin(WEBSITE_URL, "/robots.txt"))
+rp.read()
+
+# Headers to mimic a browser
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
+def test_website_access():
     try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.content, "html.parser")
-        return soup.get_text(separator=' ')  # Use space separator to avoid text clumping
+        response = requests.get(WEBSITE_URL, headers=headers, timeout=10)
+        response.raise_for_status()
+        logging.info(f"Successfully accessed {WEBSITE_URL}")
+        return True
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching text from URL: {url} - {e}", exc_info=True)
+        logging.error(f"Failed to access {WEBSITE_URL}: {e}")
+        return False
+
+def crawl_website(url, visited=None, depth=0):
+    if visited is None:
+        visited = set()
+    
+    logging.info(f"Attempting to crawl: {url} at depth {depth}")
+    
+    if url in visited or depth > MAX_DEPTH:
+        logging.info(f"Skipping {url}: Already visited or max depth reached")
         return ""
 
-# Function to extract all pages within a website
-def extract_all_pages_from_website(url):
-    cached_text = get_website_text(url)
+    # Log robots.txt content
+    logging.info(f"Robots.txt content: {rp.read()}")
+    
+    if not rp.can_fetch("*", url):
+        logging.warning(f"robots.txt disallows crawling {url}, but proceeding anyway for testing")
+    
+    visited.add(url)
+    
+    cached_text = get_page_text(url)
     if cached_text:
         logging.info(f"Using cached text for URL: {url}")
         return cached_text
 
-    base_url = urlparse(url).scheme + "://" + urlparse(url).netloc
     try:
-        response = requests.get(url)
+        logging.info(f"Fetching content from: {url}")
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
         soup = BeautifulSoup(response.content, "html.parser")
-        links = [urljoin(base_url, link["href"]) for link in soup.find_all("a", href=True)]
-
-        with ThreadPoolExecutor(max_workers=10) as executor:  # Adjust the number of workers as needed
-            pages = list(tqdm(executor.map(extract_text_from_url, links), total=len(links), desc="Fetching pages", unit="page"))
-
-        website_text = " ".join(pages)
-        save_website_text(url, website_text)  # Save fetched text to database
-        return website_text
+        text = soup.get_text(separator=' ')
+        
+        logging.info(f"Successfully extracted text from: {url}")
+        save_page_text(url, text)
+        
+        if depth < MAX_DEPTH:
+            links = soup.find_all("a", href=True)
+            logging.info(f"Found {len(links)} links on {url}")
+            
+            for link in links:
+                href = urljoin(url, link["href"])
+                if href.startswith(WEBSITE_URL) and href not in visited:
+                    logging.info(f"Queueing {href} for crawling")
+                    time.sleep(CRAWL_DELAY)
+                    text += crawl_website(href, visited, depth + 1)
+        
+        return text
+    
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error fetching pages from website: {url} - {e}", exc_info=True)
+        logging.error(f"Error crawling URL: {url} - {e}", exc_info=True)
         return ""
 
-# Function to generate a response using the Gemini API
+def extract_all_pages_from_website(url):
+    return crawl_website(url)
+
 def generate_response_gemini(query, context, max_tokens):
     try:
-        # Use only the website text as context
         context_length = min(13000, len(context))
-        prompt = f"You are an assistant ChatBot who is Based only on the following content:\n\n{context[:context_length]}...\n\nAnswer the question: {query}with engaging emojis\n\nIf user ask anything apart from the content just gracefully tell them what is in your content\n\nAdditionally, provide three follow-up questions related to the topic."
+        prompt = f"""You are an AI assistant. Your knowledge is based solely on the following content from the website:
+
+{context[:context_length]}...
+
+Using only this information, please answer the following question:
+
+{query}
+
+Provide a clear and concise response, focusing on relevant information and provide source url. If the question is not directly related to the content on the website, politely inform the user that you can only provide information available related to the content of the website.
+
+Include relevant facts, figures, and examples from the website when applicable. If appropriate, use emoji to make your response more engaging, but don't overuse them.
+
+If you're unsure about any information or if it's not covered in the provided content, state that clearly rather than making assumptions."""
 
         logging.info(f"Sending request to Gemini API with prompt: {prompt[:100]}...")  # Log first 100 chars of prompt
         response = gemini_model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.4,  # Adjusted for more coherent responses
+                temperature=0.4,
                 top_p=0.9,
                 top_k=40,
                 max_output_tokens=max_tokens,
@@ -103,12 +156,10 @@ def generate_response_gemini(query, context, max_tokens):
         )
         logging.info(f"Generated response: {response.text}")
 
-        # Split the response into the main answer and follow-up questions
         response_parts = response.text.split("\n\nFollow-up questions:\n")
         answer = response_parts[0].strip()
         follow_up_questions = response_parts[1].strip().split("\n") if len(response_parts) > 1 else []
 
-        # Limit follow-up questions to three
         follow_up_questions = follow_up_questions[:3]
 
         return {
@@ -129,18 +180,26 @@ def index():
 @app.route('/scrape_website', methods=['GET'])
 def scrape_website():
     try:
+        if not test_website_access():
+            return jsonify({'error': 'Unable to access the website'}), 500
+        
         website_text = extract_all_pages_from_website(WEBSITE_URL)
+        if not website_text:
+            return jsonify({'error': 'No content extracted from the website', 'robots_txt': rp.read()}), 500
+        
         return jsonify({'website_text': website_text})
     except Exception as e:
         logging.error(f"Error in scrape_website endpoint: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'robots_txt': rp.read()}), 500
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
         data = request.get_json()
         user_input = data.get('message', '').strip()
-        website_text = data.get('website_text', '')
+        website_text = extract_all_pages_from_website(WEBSITE_URL)  # Get fresh content for each prediction
+        if not website_text:
+            return jsonify({'error': 'No content available from the website'}), 500
         max_tokens = 2048
         response = generate_response_gemini(user_input, website_text, max_tokens=max_tokens)
         return jsonify(response)
